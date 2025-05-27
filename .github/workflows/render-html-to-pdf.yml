@@ -1,4 +1,4 @@
-name: Render HTML to PDF
+name: Render HTML to PDF and Release
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - '.github/workflows/render-html-to-pdf.yml'
 
 jobs:
-  render:
+  render-and-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -23,7 +23,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install playwright
-          # install browser binaries
           playwright install --with-deps
 
       - name: Render HTML to PDF
@@ -32,23 +31,45 @@ jobs:
           import os
           from playwright.sync_api import sync_playwright
 
-          # Adjust these if your HTML lives in a subfolder or has a different name
-          html_file = 'index.html'
+          html_file = 'index.html'     # adjust if your file is elsewhere
           pdf_file  = 'rendered.pdf'
           html_path = os.path.abspath(html_file)
 
           with sync_playwright() as p:
-              browser = p.chromium.launch()
+              browser = p.chromium.launch(headless=True)
               page = browser.new_page()
-              # load the local file
               page.goto(f'file://{html_path}')
               # generate PDF
-              page.pdf(path=pdf_file, format='A4', print_background=True)
+              page.pdf(path=pdf_file, print_background=True)
               browser.close()
           EOF
 
-      - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: pdf-${{ github.run_number }}
+          release_name: "Rendered PDF (run #${{ github.run_number }})"
+          body: |
+            This release was automatically created by GitHub Actions.
+            It contains the PDF generated from your HTML document.
+          draft: false
+          prerelease: false
+
+      - name: Upload PDF to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: rendered.pdf
+          asset_name: rendered.pdf
+          asset_content_type: application/pdf
+
+      - name: (Optional) Upload as Artifact
+        uses: actions/upload-artifact@v3
         with:
           name: rendered-html-pdf
           path: rendered.pdf
